@@ -1,11 +1,27 @@
 # Dorojam
 
-ブラウザで動く図解エディタです。公開用のファイルは `dist/` にあります。
+ブラウザで動く図解エディタです。Vite を使い、ソースは `index.html` と `src/` に置いています。
 
-## GitHub Pages で公開
+## 開発
 
-1. このディレクトリを GitHub リポジトリの `main` ブランチに push します。
-2. リポジトリの **Settings → Pages → Build and deployment → Source** で **GitHub Actions** を選びます。
-3. **Actions** の **Deploy to GitHub Pages** が完了すると、Pages に表示される URL で利用できます。
+Node.js 24 を用意して、次のコマンドを実行します。
 
-以後、`main` に push すると `dist/` の内容が自動で公開されます。アプリのデータは利用するブラウザのローカルストレージに保存されます。
+```sh
+npm ci
+npm run dev
+```
+
+表示されたローカル URL を開いてください。`npm run format` で HTML・CSS・JavaScript を整形できます。
+
+## ビルドと公開
+
+```sh
+npm run build
+npm run preview
+```
+
+ビルド成果物は `dist/` に生成されます。`main` に push すると GitHub Actions が `npm ci` と `npm run build` を実行し、GitHub Pages に公開します。
+
+公開 URL: https://tasukukuchinomachi.github.io/dorojam/
+
+ボードのデータは利用するブラウザのローカルストレージに保存されます。
