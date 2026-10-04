@@ -80,7 +80,9 @@ import "./styles.css";
     ...safeParse(localStorage.getItem("dorojam-shortcuts"), {}),
   };
   let presets = safeParse(localStorage.getItem("dorojam-shape-presets"), []);
-  let doc = safeParse(localStorage.getItem("dorojam-document"), null) || seed();
+  let doc = normalizeDocument(
+    safeParse(localStorage.getItem("dorojam-document"), null),
+  );
   let view = { x: 0, y: 0, scale: 1 },
     tool = "select",
     selected = new Set(),
@@ -96,6 +98,7 @@ import "./styles.css";
   let lastPointer = { x: 0, y: 0 },
     hover = null,
     activePreset = null;
+  let pageOptionsSignature = "";
   // Document and geometry helpers
   function safeParse(s, fallback) {
     try {
@@ -107,44 +110,140 @@ import "./styles.css";
   function seed() {
     return {
       title: "無題のボード",
-      items: [
+      activePageId: "page-1",
+      pages: [
         {
-          id: "n1",
-          type: "sticky",
-          x: 230,
-          y: 145,
-          w: 210,
-          h: 145,
-          text: "アイデアをここに書く",
-          fill: "#fff0b9",
-          stroke: "#e8c65f",
-          fontSize: 18,
-        },
-        {
-          id: "n2",
-          type: "rect",
-          x: 510,
-          y: 190,
-          w: 180,
-          h: 66,
-          text: "次のステップ",
-          fill: "#ffffff",
-          stroke: "#596079",
-          fontSize: 18,
-        },
-        {
-          id: "e1",
-          type: "connector",
-          from: "n1",
-          to: "n2",
-          x1: 440,
-          y1: 217,
-          x2: 510,
-          y2: 223,
-          stroke: "#596079",
+          id: "page-1",
+          name: "ページ 1",
+          items: [
+            {
+              id: "n1",
+              type: "sticky",
+              x: 230,
+              y: 145,
+              w: 210,
+              h: 145,
+              text: "アイデアをここに書く",
+              fill: "#fff0b9",
+              stroke: "#e8c65f",
+              fontSize: 18,
+            },
+            {
+              id: "n2",
+              type: "rect",
+              x: 510,
+              y: 190,
+              w: 180,
+              h: 66,
+              text: "次のステップ",
+              fill: "#ffffff",
+              stroke: "#596079",
+              fontSize: 18,
+            },
+            {
+              id: "e1",
+              type: "connector",
+              from: "n1",
+              to: "n2",
+              x1: 440,
+              y1: 217,
+              x2: 510,
+              y2: 223,
+              stroke: "#596079",
+            },
+          ],
         },
       ],
     };
+  }
+  function normalizeDocument(value) {
+    if (!value || typeof value !== "object") return seed();
+    if (Array.isArray(value.pages) && value.pages.length) {
+      const pages = value.pages.map((page, index) => ({
+        id: page.id || uid(),
+        name: page.name || `ページ ${index + 1}`,
+        items: Array.isArray(page.items) ? page.items : [],
+      }));
+      return {
+        title: value.title || "無題のボード",
+        pages,
+        activePageId: pages.some((page) => page.id === value.activePageId)
+          ? value.activePageId
+          : pages[0].id,
+      };
+    }
+    if (Array.isArray(value.items)) {
+      return {
+        title: value.title || "無題のボード",
+        activePageId: "page-1",
+        pages: [{ id: "page-1", name: "ページ 1", items: value.items }],
+      };
+    }
+    return seed();
+  }
+  function activePage() {
+    return (
+      doc.pages.find((page) => page.id === doc.activePageId) || doc.pages[0]
+    );
+  }
+  function renderPageControls() {
+    const pageSelect = $("#pageSelect");
+    const signature = JSON.stringify(
+      doc.pages.map(({ id, name }) => [id, name]),
+    );
+    if (signature !== pageOptionsSignature) {
+      pageSelect.replaceChildren(
+        ...doc.pages.map(({ id, name }) => new Option(name, id)),
+      );
+      pageOptionsSignature = signature;
+    }
+    pageSelect.value = doc.activePageId;
+    $("#deletePageBtn").disabled = doc.pages.length === 1;
+  }
+  function switchPage(id) {
+    if (id === doc.activePageId || !doc.pages.some((page) => page.id === id))
+      return;
+    finishEdit();
+    doc.activePageId = id;
+    selected.clear();
+    hover = null;
+    interaction = null;
+    fit();
+    persist();
+  }
+  function addPage() {
+    finishEdit();
+    snapshot();
+    const page = {
+      id: uid(),
+      name: `ページ ${doc.pages.length + 1}`,
+      items: [],
+    };
+    doc.pages.push(page);
+    doc.activePageId = page.id;
+    selected.clear();
+    setView({ x: 0, y: 0, scale: 1 });
+    persist();
+  }
+  function renamePage() {
+    const page = activePage();
+    const name = prompt("ページ名", page.name)?.trim();
+    if (!name || name === page.name) return;
+    snapshot();
+    page.name = name;
+    changed();
+  }
+  function deletePage() {
+    if (doc.pages.length === 1) return;
+    const page = activePage();
+    if (!confirm(`「${page.name}」を削除しますか？`)) return;
+    snapshot();
+    const index = doc.pages.indexOf(page);
+    doc.pages.splice(index, 1);
+    doc.activePageId = doc.pages[Math.min(index, doc.pages.length - 1)].id;
+    selected.clear();
+    fit();
+    persist();
   }
   function uid() {
     return "n" + Math.random().toString(36).slice(2, 10);
@@ -209,15 +308,15 @@ import "./styles.css";
       y: r.top + view.y + p.y * view.scale,
     };
   }
-  function item(id) {
-    return doc.items.find((n) => n.id === id);
+  function item(id, page = activePage()) {
+    return page.items.find((n) => n.id === id);
   }
   function center(n) {
     return { x: n.x + n.w / 2, y: n.y + n.h / 2 };
   }
-  function edgePoints(n) {
-    const a = item(n.from),
-      b = item(n.to);
+  function edgePoints(n, page = activePage()) {
+    const a = item(n.from, page),
+      b = item(n.to, page);
     if (!a || !b)
       return [
         { x: n.x1 || 0, y: n.y1 || 0 },
@@ -250,11 +349,11 @@ import "./styles.css";
       "transform",
       `translate(${view.x} ${view.y}) scale(${view.scale})`,
     );
-    for (const n of doc.items.filter((n) => n.type === "section"))
+    for (const n of activePage().items.filter((n) => n.type === "section"))
       renderNode(n);
-    for (const n of doc.items.filter((n) => n.type === "connector"))
+    for (const n of activePage().items.filter((n) => n.type === "connector"))
       renderConnector(n);
-    for (const n of doc.items.filter(
+    for (const n of activePage().items.filter(
       (n) => n.type !== "connector" && n.type !== "section",
     ))
       renderNode(n);
@@ -355,8 +454,9 @@ import "./styles.css";
       );
       renderNode(n, overlay, true);
     }
-    $("#emptyHint").classList.toggle("hidden", doc.items.length > 0);
+    $("#emptyHint").classList.toggle("hidden", activePage().items.length > 0);
     $("#docTitle").value = doc.title;
+    renderPageControls();
     $("#zoomValue").textContent = Math.round(view.scale * 100) + "%";
     updateInspector();
     $("#registerShapeBtn").disabled =
@@ -618,7 +718,7 @@ import "./styles.css";
   function create(type, p, start = null) {
     const n = placement(type, p, start);
     snapshot();
-    doc.items.push(n);
+    activePage().items.push(n);
     hover = null;
     interaction = null;
     select([n.id]);
@@ -712,7 +812,7 @@ import "./styles.css";
     for (const id of selected) {
       const s = item(id);
       if (s?.type !== "section") continue;
-      for (const n of doc.items) {
+      for (const n of activePage().items) {
         if (n.type === "connector") continue;
         if (
           n.id !== id &&
@@ -866,8 +966,8 @@ import "./styles.css";
     if (i.type === "marquee") {
       const a = i.start,
         b = i.current;
-      const ids = doc.items
-        .filter(
+      const ids = activePage()
+        .items.filter(
           (n) =>
             n.type !== "connector" &&
             n.x >= Math.min(a.x, b.x) &&
@@ -880,7 +980,7 @@ import "./styles.css";
     } else if (i.type === "connect") {
       const target =
         nodeAt(e.target) ||
-        doc.items.find(
+        activePage().items.find(
           (n) =>
             n.type !== "connector" &&
             lastPointer.x >= n.x &&
@@ -903,7 +1003,7 @@ import "./styles.css";
           y2: b.y,
           stroke: "#596079",
         };
-        doc.items.push(n);
+        activePage().items.push(n);
         select([n.id]);
         persist();
       } else render();
@@ -925,7 +1025,7 @@ import "./styles.css";
     });
   }
   function fit() {
-    const nodes = doc.items.filter((n) => n.type !== "connector");
+    const nodes = activePage().items.filter((n) => n.type !== "connector");
     if (!nodes.length) {
       setView({ x: 0, y: 0, scale: 1 });
       return;
@@ -969,7 +1069,7 @@ import "./styles.css";
   function remove() {
     if (!selected.size) return;
     snapshot();
-    doc.items = doc.items.filter(
+    activePage().items = activePage().items.filter(
       (n) =>
         !selected.has(n.id) &&
         !(
@@ -982,9 +1082,11 @@ import "./styles.css";
   }
   function copy() {
     const ids = new Set(dragTargets().map(([id]) => id));
-    for (const n of doc.items.filter((n) => n.type === "connector"))
+    for (const n of activePage().items.filter((n) => n.type === "connector"))
       if (ids.has(n.from) && ids.has(n.to)) ids.add(n.id);
-    clipboard = doc.items.filter((n) => ids.has(n.id)).map(clone);
+    clipboard = activePage()
+      .items.filter((n) => ids.has(n.id))
+      .map(clone);
     if (clipboard.length) toast(`${clipboard.length} 個コピーしました`);
   }
   function paste() {
@@ -1010,7 +1112,7 @@ import "./styles.css";
         x.from = map.get(x.from) || null;
         x.to = map.get(x.to) || null;
       }
-    doc.items.push(...copies);
+    activePage().items.push(...copies);
     clipboard = copies.map(clone);
     select(copies.map((n) => n.id));
     persist();
@@ -1059,7 +1161,7 @@ import "./styles.css";
     else if (a === "open") $("#fileInput").click();
     else if (a === "new") newBoard();
     else if (a === "shortcuts") openShortcuts();
-    else if (a === "selectAll") select(doc.items.map((n) => n.id));
+    else if (a === "selectAll") select(activePage().items.map((n) => n.id));
     else if (a === "escape") {
       interaction = null;
       hover = null;
@@ -1239,12 +1341,16 @@ import "./styles.css";
   }
   function newBoard() {
     if (
-      doc.items.length &&
+      doc.pages.some((page) => page.items.length) &&
       !confirm("新しいボードを作成しますか？現在の内容はこの端末から消えます。")
     )
       return;
     snapshot();
-    doc = { title: "無題のボード", items: [] };
+    doc = {
+      title: "無題のボード",
+      activePageId: "page-1",
+      pages: [{ id: "page-1", name: "ページ 1", items: [] }],
+    };
     selected.clear();
     setView({ x: 0, y: 0, scale: 1 });
     changed();
@@ -1279,20 +1385,23 @@ import "./styles.css";
     return "rounded=1;arcSize=12;" + base;
   }
   function drawioXML() {
-    const cells = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
-    for (const n of doc.items) {
-      if (n.type === "connector") continue;
-      cells.push(
-        `<mxCell id="${esc(n.id)}" value="${esc(n.text || "")}" style="${styleFor(n)}" vertex="1" parent="1"><mxGeometry x="${Math.round(n.x)}" y="${Math.round(n.y)}" width="${Math.round(n.w)}" height="${Math.round(n.h)}" as="geometry"/></mxCell>`,
-      );
-    }
-    for (const n of doc.items.filter((n) => n.type === "connector")) {
-      const [a, b] = edgePoints(n);
-      cells.push(
-        `<mxCell id="${esc(n.id)}" value="" style="endArrow=open;html=0;strokeColor=${n.stroke || "#596079"};" edge="1" parent="1"${n.from ? ` source="${esc(n.from)}"` : ""}${n.to ? ` target="${esc(n.to)}"` : ""}><mxGeometry relative="1" as="geometry"><mxPoint x="${Math.round(a.x)}" y="${Math.round(a.y)}" as="sourcePoint"/><mxPoint x="${Math.round(b.x)}" y="${Math.round(b.y)}" as="targetPoint"/></mxGeometry></mxCell>`,
-      );
-    }
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="Dorojam" version="24.0.0"><diagram name="${esc(doc.title)}" id="dorojam"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" page="0"><root>${cells.join("")}</root></mxGraphModel></diagram></mxfile>`;
+    const diagrams = doc.pages.map((page) => {
+      const cells = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
+      for (const n of page.items) {
+        if (n.type === "connector") continue;
+        cells.push(
+          `<mxCell id="${esc(n.id)}" value="${esc(n.text || "")}" style="${styleFor(n)}" vertex="1" parent="1"><mxGeometry x="${Math.round(n.x)}" y="${Math.round(n.y)}" width="${Math.round(n.w)}" height="${Math.round(n.h)}" as="geometry"/></mxCell>`,
+        );
+      }
+      for (const n of page.items.filter((n) => n.type === "connector")) {
+        const [a, b] = edgePoints(n, page);
+        cells.push(
+          `<mxCell id="${esc(n.id)}" value="" style="endArrow=open;html=0;strokeColor=${n.stroke || "#596079"};" edge="1" parent="1"${n.from ? ` source="${esc(n.from)}"` : ""}${n.to ? ` target="${esc(n.to)}"` : ""}><mxGeometry relative="1" as="geometry"><mxPoint x="${Math.round(a.x)}" y="${Math.round(a.y)}" as="sourcePoint"/><mxPoint x="${Math.round(b.x)}" y="${Math.round(b.y)}" as="targetPoint"/></mxGeometry></mxCell>`,
+        );
+      }
+      return `<diagram name="${esc(page.name)}" id="${esc(page.id)}"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" page="1"><root>${cells.join("")}</root></mxGraphModel></diagram>`;
+    });
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="Dorojam" version="24.0.0" pages="${doc.pages.length}">${diagrams.join("")}</mxfile>`;
   }
   function exportDrawio() {
     download(filename(".drawio"), drawioXML(), "application/xml");
@@ -1322,87 +1431,113 @@ import "./styles.css";
   async function openDrawio(file) {
     try {
       const raw = await file.text();
-      let xml = new DOMParser().parseFromString(raw, "application/xml");
+      const xml = new DOMParser().parseFromString(raw, "application/xml");
       if (xml.querySelector("parsererror")) throw Error("XML を読み取れません");
-      let model = xml.querySelector("mxGraphModel");
-      if (!model) {
-        const diagram = xml.querySelector("diagram");
-        if (!diagram) throw Error("draw.io 形式ではありません");
-        const decoded = await decodeDiagram(diagram.textContent || "");
-        xml = new DOMParser().parseFromString(decoded, "application/xml");
-        model = xml.querySelector("mxGraphModel");
+      const diagrams = [...xml.querySelectorAll("diagram")];
+      const models = [];
+      if (diagrams.length) {
+        for (const [index, diagram] of diagrams.entries()) {
+          let model = diagram.querySelector("mxGraphModel");
+          if (!model) {
+            const decoded = await decodeDiagram(diagram.textContent || "");
+            const decodedXml = new DOMParser().parseFromString(
+              decoded,
+              "application/xml",
+            );
+            if (decodedXml.querySelector("parsererror"))
+              throw Error("図形データを読み取れません");
+            model = decodedXml.querySelector("mxGraphModel");
+          }
+          if (!model) throw Error("図形データがありません");
+          models.push({
+            model,
+            id: diagram.getAttribute("id") || uid(),
+            name: diagram.getAttribute("name") || `ページ ${index + 1}`,
+          });
+        }
+      } else {
+        const model = xml.querySelector("mxGraphModel");
+        if (!model) throw Error("draw.io 形式ではありません");
+        models.push({ model, id: uid(), name: "ページ 1" });
       }
-      if (!model) throw Error("図形データがありません");
-      const nodes = [];
-      for (const c of model.querySelectorAll('mxCell[vertex="1"]')) {
-        const g = c.querySelector("mxGeometry");
-        if (!g) continue;
-        const st = parseStyle(c.getAttribute("style"));
-        const shape = (c.getAttribute("style") || "").split(";")[0];
-        const type =
-          shape === "ellipse"
-            ? "ellipse"
-            : shape === "rhombus"
-              ? "diamond"
-              : st.shape === "note"
-                ? "sticky"
-                : shape === "swimlane" || st.dorojamSection === "1"
-                  ? "section"
-                  : shape === "text"
-                    ? "text"
-                    : "rect";
-        nodes.push({
-          id: c.getAttribute("id") || uid(),
-          type,
-          x: Number(g.getAttribute("x")) || 0,
-          y: Number(g.getAttribute("y")) || 0,
-          w: Number(g.getAttribute("width")) || 160,
-          h: Number(g.getAttribute("height")) || 70,
-          text: (c.getAttribute("value") || "")
-            .replace(/<br\s*\/?\s*>/gi, "\n")
-            .replace(/<[^>]*>/g, ""),
-          fill:
-            st.fillColor && st.fillColor !== "none"
-              ? st.fillColor
-              : type === "text"
-                ? "transparent"
-                : "#ffffff",
-          stroke:
-            st.strokeColor && st.strokeColor !== "none"
-              ? st.strokeColor
-              : "#596079",
-          fontSize: Number(st.fontSize) || 18,
-        });
-      }
-      for (const c of model.querySelectorAll('mxCell[edge="1"]')) {
-        const g = c.querySelector("mxGeometry"),
-          st = parseStyle(c.getAttribute("style")),
-          a = g?.querySelector('mxPoint[as="sourcePoint"]'),
-          b = g?.querySelector('mxPoint[as="targetPoint"]');
-        nodes.push({
-          id: c.getAttribute("id") || uid(),
-          type: "connector",
-          from: c.getAttribute("source"),
-          to: c.getAttribute("target"),
-          x1: Number(a?.getAttribute("x")) || 0,
-          y1: Number(a?.getAttribute("y")) || 0,
-          x2: Number(b?.getAttribute("x")) || 120,
-          y2: Number(b?.getAttribute("y")) || 60,
-          stroke: st.strokeColor || "#596079",
-        });
+      const pages = [];
+      for (const { model, id, name } of models) {
+        const nodes = [];
+        for (const c of model.querySelectorAll('mxCell[vertex="1"]')) {
+          const g = c.querySelector("mxGeometry");
+          if (!g) continue;
+          const st = parseStyle(c.getAttribute("style"));
+          const shape = (c.getAttribute("style") || "").split(";")[0];
+          const type =
+            shape === "ellipse"
+              ? "ellipse"
+              : shape === "rhombus"
+                ? "diamond"
+                : st.shape === "note"
+                  ? "sticky"
+                  : shape === "swimlane" || st.dorojamSection === "1"
+                    ? "section"
+                    : shape === "text"
+                      ? "text"
+                      : "rect";
+          nodes.push({
+            id: c.getAttribute("id") || uid(),
+            type,
+            x: Number(g.getAttribute("x")) || 0,
+            y: Number(g.getAttribute("y")) || 0,
+            w: Number(g.getAttribute("width")) || 160,
+            h: Number(g.getAttribute("height")) || 70,
+            text: (c.getAttribute("value") || "")
+              .replace(/<br\s*\/?\s*>/gi, "\n")
+              .replace(/<[^>]*>/g, ""),
+            fill:
+              st.fillColor && st.fillColor !== "none"
+                ? st.fillColor
+                : type === "text"
+                  ? "transparent"
+                  : "#ffffff",
+            stroke:
+              st.strokeColor && st.strokeColor !== "none"
+                ? st.strokeColor
+                : "#596079",
+            fontSize: Number(st.fontSize) || 18,
+          });
+        }
+        for (const c of model.querySelectorAll('mxCell[edge="1"]')) {
+          const g = c.querySelector("mxGeometry"),
+            st = parseStyle(c.getAttribute("style")),
+            a = g?.querySelector('mxPoint[as="sourcePoint"]'),
+            b = g?.querySelector('mxPoint[as="targetPoint"]');
+          nodes.push({
+            id: c.getAttribute("id") || uid(),
+            type: "connector",
+            from: c.getAttribute("source"),
+            to: c.getAttribute("target"),
+            x1: Number(a?.getAttribute("x")) || 0,
+            y1: Number(a?.getAttribute("y")) || 0,
+            x2: Number(b?.getAttribute("x")) || 120,
+            y2: Number(b?.getAttribute("y")) || 60,
+            stroke: st.strokeColor || "#596079",
+          });
+        }
+        pages.push({ id, name, items: nodes });
       }
       snapshot();
-      doc = { title: file.name.replace(/\.(drawio|xml)$/i, ""), items: nodes };
+      doc = {
+        title: file.name.replace(/\.(drawio|xml)$/i, ""),
+        pages,
+        activePageId: pages[0].id,
+      };
       selected.clear();
       fit();
       changed();
-      toast(`${nodes.length} 個の要素を読み込みました`);
+      toast(`${pages.length} ページを読み込みました`);
     } catch (err) {
       toast("読み込めませんでした: " + err.message);
     }
   }
   function svgExport() {
-    const nodes = doc.items.filter((n) => n.type !== "connector");
+    const nodes = activePage().items.filter((n) => n.type !== "connector");
     const minX = Math.min(0, ...nodes.map((n) => n.x)) - 30,
       minY = Math.min(0, ...nodes.map((n) => n.y)) - 30,
       maxX = Math.max(900, ...nodes.map((n) => n.x + n.w)) + 30,
@@ -1439,7 +1574,7 @@ import "./styles.css";
   }
   // DOM event wiring
   for (const panel of document.querySelectorAll(
-    ".toolbar,.inspector,.zoom-bar",
+    ".toolbar,.inspector,.zoom-bar,.page-bar",
   )) {
     panel.addEventListener("pointerdown", (e) => e.stopPropagation());
     panel.addEventListener("dblclick", (e) => e.stopPropagation());
@@ -1536,6 +1671,10 @@ import "./styles.css";
     toast("初期設定に戻しました");
   };
   $("#fileBtn").onclick = () => $("#fileMenu").classList.toggle("hidden");
+  $("#pageSelect").onchange = (event) => switchPage(event.target.value);
+  $("#addPageBtn").onclick = addPage;
+  $("#renamePageBtn").onclick = renamePage;
+  $("#deletePageBtn").onclick = deletePage;
   $("#exportBtn").onclick = exportDrawio;
   $("#fileInput").onchange = (e) => {
     if (e.target.files[0]) openDrawio(e.target.files[0]);
@@ -1627,7 +1766,7 @@ import "./styles.css";
       [
         "read_diagram",
         "Read the visible diagram",
-        () => ({ title: doc.title, items: clone(doc.items) }),
+        () => ({ title: doc.title, items: clone(activePage().items) }),
       ],
     ]) {
       try {

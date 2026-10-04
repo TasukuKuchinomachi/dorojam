@@ -325,6 +325,48 @@ select:focus-visible {
   background: #eeebff;
   color: #5b45e8;
 }
+.page-bar {
+  position: absolute;
+  left: 22px;
+  bottom: 22px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100% - 300px);
+  padding: 4px;
+  border: 1px solid #e7e8ef;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 8px 20px #2c2b501b;
+  z-index: 3;
+}
+.page-bar select {
+  min-width: 100px;
+  max-width: 220px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: #45465a;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 5px;
+}
+.page-bar button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #5b5d72;
+  font-size: 17px;
+}
+.page-bar button:hover {
+  background: #f1f0fa;
+}
+.page-bar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 .zoom-bar {
   position: absolute;
   right: 22px;
@@ -606,6 +648,15 @@ select:focus-visible {
     top: 9px;
     width: 190px;
     padding: 12px;
+  }
+  .page-bar {
+    left: 9px;
+    bottom: 9px;
+    max-width: calc(100% - 178px);
+  }
+  .page-bar select {
+    min-width: 70px;
+    max-width: 130px;
   }
   .zoom-bar {
     right: 9px;

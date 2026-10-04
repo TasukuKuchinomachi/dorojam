@@ -11,7 +11,9 @@ npm ci
 npm run dev
 ```
 
-表示されたローカル URL を開いてください。`npm run format` で HTML・CSS・JavaScript を整形できます。
+表示されたローカル URL を開いてください。`npm run format` で HTML・CSS・JavaScript を整形できます。`npm test` でページ切り替えと draw.io の読み書きを検証できます。
+
+画面左下でページを追加・選択・名前変更・削除できます。複数ページの draw.io ファイルを開くと各ページが選択肢に表示され、書き出しでも全ページが保存されます。
 
 ## ビルドと公開
 
