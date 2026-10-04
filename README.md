@@ -27,3 +27,5 @@ npm run preview
 公開 URL: https://tasukukuchinomachi.github.io/dorojam/
 
 ボードのデータは利用するブラウザのローカルストレージに保存されます。
+
+draw.io 形式との対応状況とテスト範囲は [draw.io 互換性とテスト範囲](docs/drawio-compatibility.md) にまとめています。
